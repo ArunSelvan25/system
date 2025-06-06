@@ -75,5 +75,5 @@ The app uses the following tables:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/rental-management-laravel.git
-cd rental-management-laravel
+git clone https://github.com/ArunSelvan25/system.git
+cd system

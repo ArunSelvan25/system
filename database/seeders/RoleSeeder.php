@@ -21,7 +21,7 @@ class RoleSeeder extends Seeder
         $permissions = [
             'list_role', 'create_role', 'assign_permission_to_role', 'delete_role',
             'list_user', 'create_user', 'edit_user', 'delete_user',
-            'list_property', 'create_property', 'edit_property', 'delete_property',
+            'list_property', 'create_property', 'edit_property', 'delete_property', 'view_property'
         ];
         $createdPermission = array();
         foreach($permissions as $permission) {

@@ -37,6 +37,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/property/type-list', [OwnerController::class, 'listPropertyTypes'])->name('property-type.list');
     Route::get('/property/list', [OwnerController::class, 'propertyList'])->name('property.list');
     Route::post('/property/store', [OwnerController::class, 'propertyCreate'])->name('property.store');
+    Route::post('/property/update', [OwnerController::class, 'propertyUpdate'])->name('property.update');
+
+    Route::get('/property/view', [OwnerController::class, 'propertyView'])->name('property.view');
+    Route::get('/property/details', [OwnerController::class, 'getPropertyDetails'])->name('property.details');
 
 
     Route::get('/get-roles', [RoleAndPermissionController::class, 'listRoles'])->name('roles.list.roles');

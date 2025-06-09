@@ -4,26 +4,32 @@ import { useCallback, useEffect, useState } from 'react';
 export default function DropzoneInput({ onDrop, onRemove, label, files }) {
   const [previews, setPreviews] = useState([]);
 
-  const handleDrop = useCallback(
-    (acceptedFiles) => {
-      onDrop(acceptedFiles);
-    },
-    [onDrop]
-  );
+  const handleDrop = useCallback((acceptedFiles) => {
+    onDrop(acceptedFiles);
+  }, [onDrop]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop: handleDrop });
 
   useEffect(() => {
-    const newPreviews = files.map((file) => ({
-      name: file.name,
-      url: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-    }));
+    const newPreviews = files.map((file) => {
+      
+      if (typeof file === 'string') {
+        // existing image URL
+        return { name: file.split('/').pop(), url: file };
+      } else {
+        // new file
+        return {
+          name: file?.name || 'property image',
+          url: file?.type.startsWith('image/') ? URL.createObjectURL(file) : (file?.url ?? null),
+        };
+      }
+    });
 
     setPreviews(newPreviews);
 
     return () => {
       newPreviews.forEach((file) => {
-        if (file.url) URL.revokeObjectURL(file.url);
+        if (file.url && typeof file.url !== 'string') URL.revokeObjectURL(file.url);
       });
     };
   }, [files]);
@@ -57,7 +63,7 @@ export default function DropzoneInput({ onDrop, onRemove, label, files }) {
               <div className="p-2 text-xs text-gray-600">{file.name}</div>
             )}
 
-            {/* Remove Button (visible only on hover) */}
+            {/* Remove Button */}
             <button
               type="button"
               onClick={() => onRemove(index)}

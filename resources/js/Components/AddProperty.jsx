@@ -69,10 +69,6 @@ export default function AddPropertyForm({ userId, propertyTypes, propertyStatuse
     e.preventDefault();
 
     const formData = appendFormData();
-
-    for (let [key, value] of formData.entries()) {
-      console.log(`${key}:`, value);
-    }
         
     try {
       router.post(route('property.store'), formData, {

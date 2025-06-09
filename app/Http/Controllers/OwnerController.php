@@ -180,6 +180,101 @@ class OwnerController extends Controller
         }
     }
 
+    public function propertyUpdate(Request $request) {
+        $this->updateProperty($request->propertyId, $request->user_id, $request->all());
+    }
+
+    public function updateProperty($propertyId, $userId, $propertyData)
+    {
+        DB::beginTransaction();
+        try {
+            // Update main property details
+            $propertyArray = [
+                'property_name' => $propertyData['property_name'],
+                'property_type' => $propertyData['property_type'],
+                'description' => $propertyData['description'] ?? null,
+                'property_status' => $propertyData['property_status'],
+                'status' => $propertyData['status'] ?? 1,
+                'address_line_1' => $propertyData['address_line_1'],
+                'address_line_2' => $propertyData['address_line_2'] ?? null,
+                'city' => $propertyData['city'],
+                'state' => $propertyData['state'],
+                'postal_code' => $propertyData['postal_code'],
+                'country' => $propertyData['country'],
+                'latitude' => $propertyData['latitude'] ?? null,
+                'longitude' => $propertyData['longitude'] ?? null,
+            ];
+
+            $this->property
+                ->where('id', $propertyId)
+                ->where('user_id', $userId)
+                ->update($propertyArray);
+
+            // Update financial details
+            $propertyFinancialArray = [
+                'monthly_rent' => floatval($propertyData['monthly_rent']),
+                'security_deposit' => floatval($propertyData['security_deposit']) ?? null,
+                'maintenance_charges' => floatval($propertyData['maintenance_charges']) ?? null,
+                'lease_duration' => $propertyData['lease_duration'] ?? null,
+                'rent_due_day' => $propertyData['rent_due_day'] ?? null,
+                'is_negotiable' => $propertyData['is_negotiable'] ?? false,
+                'payment_frequency' => $propertyData['payment_frequency'] ?? 'monthly',
+                'charges' => $propertyData['charges'] ?? null,
+                'status' => $propertyData['status'] ?? 1,
+                'currency' => $propertyData['currency'] ?? 'INR',
+            ];
+
+            $this->propertyFinancial
+                ->updateOrCreate(
+                    ['property_id' => $propertyId],
+                    $propertyFinancialArray
+                );
+
+            // Existing images IDs sent from frontend to keep
+            $existingImageIds = $propertyData['existing_images'] ?? [];
+
+            // Delete images that are currently in DB but not in existing_images
+            $imagesToDelete = PropertyImage::where('property_id', $propertyId)
+                                ->whereNotIn('id', $existingImageIds)
+                                ->get();
+                            
+
+            foreach ($imagesToDelete as $image) {
+                // Delete image file from storage
+                Storage::disk('property_images')->delete($image->path); // adjust path field name
+
+                // Delete record from DB
+                $image->delete();
+            }
+
+            // Save new uploaded images
+            if (!empty($propertyData['property_images'])) {
+                foreach ($propertyData['property_images'] as $uploadedFile) {
+                    // Generate a unique filename
+                    $filename = uniqid() . '_' . time() . '.' . $uploadedFile->getClientOriginalExtension();
+
+                    // Store file in storage/app/property_images/property_{id}/
+                    $path = $uploadedFile->storeAs("property_{$propertyId}", $filename, 'property_images');
+
+                    PropertyImage::create([
+                        'property_id' => $propertyId,
+                        'path' => $path,
+                        'alt_text' => $filename, 
+                        'status' => 1,
+                        'created_at' => now(),
+                        'updated_at' => now()
+                    ]);
+                }
+            }
+            DB::commit();
+        } catch (\Exception $e) {
+            Log::error('Error updating property: ' . $e->getMessage(), ['exception' => $e]);
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+
     /**
      * Display the specified resource.
      */
@@ -256,5 +351,34 @@ class OwnerController extends Controller
                 return '';
             })
             ->toJson();
+    }
+
+    public function propertyView(Request $request) {
+        if ($request->property_id) {
+            return Inertia::render('Property/PropertyView', ['property_id' => $request->property_id]);
+        }
+        return back()->with('error', 'Property ID is required.');
+    }   
+    
+    public function getPropertyDetails(Request $request) {
+        $propertyId = $request->query('property_id');
+        if (!$propertyId) {
+            return response()->json(['error' => 'Property ID is required.'], 400);
+        }
+        $property = $this->property->where(function($q) {
+            $q->Where(function($queryr) {
+                if (auth()->user()->roles->contains('name', 'admin')) {
+                    return true;
+                }
+                return false;
+              });
+        })->with(['user', 'amenities', 'images', 'documents', 'financials', 'tenants', 'transactions'])
+            ->where('property_id', $propertyId)->first();
+
+        if (!$property) {
+            return response()->json(['error' => 'Property not found.'], 404);
+        }
+
+        return response()->json($property);
     }
 }

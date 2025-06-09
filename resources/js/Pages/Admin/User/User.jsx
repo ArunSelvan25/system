@@ -10,6 +10,7 @@ import InputError from '@/Components/InputError';
 import SelectInput from '@/Components/SelectInput';
 import DropzoneInput from '@/Components/DropzoneInput';
 import AddPropertyForm from '@/Components/AddProperty';
+import EditPropertyForm from '@/Components/EditPropertyForm';
 
 export default function User({ propertyTypes, propertyStatuses, paymentFrequencies}) {
   
@@ -24,6 +25,18 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
   const [addProperty, setAddProperty] = useState(false);
   const [propertyImages, setPropertyImages] = useState([]);
   const [documentUploads, setDocumentUploads] = useState([]);
+  const [editProperty, setEditProperty] = useState(null);
+  const [editPropertyData, setEditPropertyData] = useState([]);
+
+  const resetPage = () => {
+    setShowPropertyOwnerId(null);
+    setUserPropertyType(0);
+    setSearchUserRole('all');
+    setAdduser(false);
+    setAddProperty(false);
+    setEditProperty(false);
+    setEditPropertyData([]);
+  }
 
   useEffect(() => {
     axios.get('/get-roles')
@@ -218,13 +231,9 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
   }
 
   const fetchProperties = async (SelectedUser, page = 1, perPageCount = propertyPerPage) => {
-    if (showPropertyOwnerId === SelectedUser.id  && userPropertyType === 1) {
-      setShowPropertyOwnerId(null);
-      setUserPropertyType(0);
-    } else {
-
       setShowPropertyOwnerId(SelectedUser.id);
-
+      setEditProperty(null);
+      setEditPropertyData([]);
       const propertyStart = (page - 1) * perPageCount;
       try {
         const response = await axios.get(route('property.list'), {
@@ -251,10 +260,11 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
       } finally {
         // setLoading(false);
       }
-    }
   }
 
   const addPropertyForUser = (selectedUser) => {
+    setEditProperty(null);
+    setEditPropertyData([]);
     if (showPropertyOwnerId === selectedUser.id && userPropertyType === 2) {
       setShowPropertyOwnerId(null);
       setUserPropertyType(0);
@@ -263,6 +273,29 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
       setUserPropertyType(2);
     }
   }
+
+  const handleViewProperty = (property_id) => {
+    router.visit('/property/view?property_id=' + property_id);
+  };
+
+  const handleEditProperty = (property_id) => {
+  if (editProperty === property_id) {
+    setEditProperty(null);
+    setEditPropertyData(null); // clear data when collapsing
+  } else {
+    axios.get(route('property.details'), {
+      params: { property_id }
+    })
+    .then(response => {
+      setEditProperty(property_id); // only set after data is loaded
+      setEditPropertyData(response.data);
+    })
+    .catch(error => {
+      console.error('Error fetching property details:', error);
+    });
+  }
+};
+
 
   return (
     <AuthenticatedLayout
@@ -826,9 +859,11 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
                         </tr>
 
                         {/* Property Table Row */}
-                        {(showPropertyOwnerId === listUser.id) && (
+                        {
+                          (showPropertyOwnerId === listUser.id) && 
+                          (
                           <>
-                            {userPropertyType === 1 && (
+                            {(userPropertyType === 1) && (
                               <>
                                 <tr>
                                   <td colSpan={4} className="p-4 bg-gray-50 border-b border-gray-300">
@@ -844,14 +879,24 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
                                       <tbody className="text-gray-700 text-sm">
                                         {properties?.length > 0 ? (
                                           properties.map((property) => (
-                                            <tr key={property.property_id} className="hover:bg-gray-50 transition-colors duration-150">
-                                              <td className="p-3 border-b border-gray-200">{property.property_id}</td>
-                                              <td className="p-3 border-b border-gray-200 uppercase">{property.property_name}</td>
-                                              <td className="p-3 border-b border-gray-200 uppercase">{property.property_status}</td>
-                                              <td className="p-3 border-b border-gray-200 text-center">
-                                                <SecondaryButton className="px-3 py-1 text-xs">View</SecondaryButton>
-                                              </td>
-                                            </tr>
+                                            <React.Fragment key={property.property_id}>
+                                              <tr className="hover:bg-gray-50 transition-colors duration-150">
+                                                <td className="p-3 border-b border-gray-200">{property.property_id}</td>
+                                                <td className="p-3 border-b border-gray-200 uppercase">{property.property_name}</td>
+                                                <td className="p-3 border-b border-gray-200 uppercase">{property.property_status}</td>
+                                                <td className="p-3 border-b border-gray-200 text-center">
+                                                  <SecondaryButton onClick={() => handleViewProperty(property.property_id)} className="px-3 py-1 text-xs">View</SecondaryButton>
+                                                  <PrimaryButton onClick={() => handleEditProperty(property.property_id)} className="px-3 py-1 text-xs">Edit</PrimaryButton>
+                                                </td>
+                                              </tr>
+                                              {editProperty === property.property_id && (
+                                                <tr>
+                                                  <td colSpan={4} className="p-4 bg-gray-50 border-b border-gray-300">
+                                                    <EditPropertyForm userId={listUser.id} property={editPropertyData} propertyTypes={propertyTypes} propertyStatuses={propertyStatuses} paymentFrequencies={paymentFrequencies} formSubmitted={resetPage}  />
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
                                           ))
                                         ) : (
                                           <tr>
@@ -878,7 +923,7 @@ export default function User({ propertyTypes, propertyStatuses, paymentFrequenci
 
                             {userPropertyType === 2 && (
                               <>
-                              <tr>
+                                <tr>
                                   <td colSpan={4} className="p-4 bg-gray-50 border-b border-gray-300">
                                     <AddPropertyForm propertyStatuses={propertyStatuses} propertyTypes={propertyTypes} paymentFrequencies={paymentFrequencies} userId={listUser.id} />
                                   </td>

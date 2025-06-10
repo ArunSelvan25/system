@@ -121,7 +121,7 @@ export default function PropertyPage({ property_id }) {
     >
       <Head title="Property Details" />
 
-      <div className="max-w-6xl mx-auto space-y-8 py-6 px-4">
+      <div className="mx-auto space-y-8 py-4 px-4">
         {/* Overview */}
         <PropertyOverView property={property} isLoading={isLoading} />
 

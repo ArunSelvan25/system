@@ -54,6 +54,11 @@ export default function AuthenticatedLayout({ header, children }) {
                                     User
                                 </NavLink>
                             }
+                            {(['assign_tenant_property'].some(p => user?.permissions?.includes(p)) || user?.role?.includes("admin")) && 
+                                <NavLink href={route('property.assignment.index')} active={route().current('property.assignment.index')}>
+                                    Assignment
+                                </NavLink>
+                            }
                             <NavLink href="#" onClick={() => alert('Other Link')}>
                                 Link 2
                             </NavLink>
@@ -86,6 +91,11 @@ export default function AuthenticatedLayout({ header, children }) {
                             }
                             {(['list_user', 'create_user', 'edit_user', 'delete_user'].some(p => user?.permissions?.includes(p)) || user?.role?.includes("admin")) && 
                                 <NavLink href={route('owner.index')} active={route().current('owner.index')}>
+                                    User
+                                </NavLink>
+                            }
+                            {(['assign_tenant_property'].some(p => user?.permissions?.includes(p)) || user?.role?.includes("admin")) && 
+                                <NavLink href={route('property.assignment.index')} active={route().current('property.assignment.index')}>
                                     User
                                 </NavLink>
                             }

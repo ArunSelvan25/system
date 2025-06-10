@@ -381,4 +381,8 @@ class OwnerController extends Controller
 
         return response()->json($property);
     }
+
+    public function propertyAssignmentView() {
+        return Inertia::render('PropertyAssignment/PropertyAssignment');
+    }
 }

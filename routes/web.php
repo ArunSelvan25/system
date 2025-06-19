@@ -43,6 +43,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/property/details', [OwnerController::class, 'getPropertyDetails'])->name('property.details');
 
     Route::get('/property/assignment', [OwnerController::class, 'propertyAssignmentView'])->name('property.assignment.index');
+    Route::post('/property/assignment', [OwnerController::class, 'assignTenantToProperty'])->name('property.assignment.post');
 
 
     Route::get('/get-roles', [RoleAndPermissionController::class, 'listRoles'])->name('roles.list.roles');

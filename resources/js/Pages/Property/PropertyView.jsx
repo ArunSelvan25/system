@@ -97,15 +97,15 @@ export default function PropertyPage({ property_id }) {
       params: { property_id }
     })
     .then(response => {
-      // Assuming the response contains the same structure as sampleData
       const data = response.data;
+      
       setData(data);
       setProperty(data); 
       setAmenities(data.amenities)
       setImages(data.images)
       setDocuments(data.documents)
       setFinancial(data.financials)
-      setTenants(data.tenants)
+      setTenants(data)
       setTransactions(data.transactions)
       setIsLoading(false)
     })

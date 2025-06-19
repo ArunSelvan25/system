@@ -17,8 +17,7 @@ export default function Tenant({ tenants, isLoading = false }) {
     if (!dateStr) return '-';
     try {
       return new Date(dateStr).toLocaleDateString(undefined, {
-        month: 'short',
-        year: 'numeric',
+        dateStyle: 'full',
       });
     } catch {
       return '-';
@@ -55,25 +54,25 @@ export default function Tenant({ tenants, isLoading = false }) {
         </div>
       ) : (
         <ul className="divide-y divide-gray-200">
-          {tenants.map((t) => (
+          {tenants?.tenants?.map((t) => (
             <li
               key={t.id}
               className="py-4 flex items-center justify-between hover:bg-gray-50 rounded-lg transition-colors"
             >
               <div className="flex items-center space-x-4">
                 <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center text-gray-600 font-semibold text-sm uppercase select-none">
-                  {getInitials(t.user?.name)}
+                  {getInitials(t.name)}
                 </div>
-                <span className="text-gray-800 font-medium">{t.user?.name || '-'}</span>
+                <span className="text-gray-800 font-medium">{t.name || '-'}</span>
               </div>
 
               <div className="flex space-x-3 text-sm">
                 <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-semibold">
-                  {formatDate(t.start_date)}
+                  {formatDate(t?.pivot?.start_date)}
                 </span>
                 <span className="self-center text-gray-400">—</span>
                 <span className="px-3 py-1 rounded-full bg-green-100 text-green-800 font-semibold">
-                  {t.end_date ? formatDate(t.end_date) : 'Present'}
+                  {t?.pivot?.end_date ? formatDate(t?.pivot?.end_date) : 'Present'}
                 </span>
               </div>
             </li>

@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Models\PropertyImage;
+use App\Enum\RoleIdEnum;
+use App\Models\PropertyTenant;
+use Carbon\Carbon;
 
 class OwnerController extends Controller
 {
@@ -26,12 +29,14 @@ class OwnerController extends Controller
     protected $property;
     protected $propertyFinancial;
     protected $propertyImage;
+    protected $propertyTenant;
     public function __construct(
         User $user, 
         Role $roles, 
         Property $property, 
         PropertyFinancial $propertyFinancial,
-        PropertyImage $propertyImage
+        PropertyImage $propertyImage,
+        PropertyTenant $propertyTenant
     )
     {
         $this->user = $user;
@@ -39,6 +44,7 @@ class OwnerController extends Controller
         $this->property = $property;
         $this->propertyFinancial = $propertyFinancial;
         $this->propertyImage = $propertyImage;
+        $this->propertyTenant = $propertyTenant;
     }
     /**
      * Display a listing of the resource.
@@ -137,7 +143,7 @@ class OwnerController extends Controller
             $this->propertyFinancial->create($propertyFinancialArray);
 
             // Store property images
-            if ($propertyData['property_images']) {
+            if (isset($propertyData['property_images'])) {
                 $folder = 'property_' . $propertyId;
                 $disk = Storage::disk('property_images');
 
@@ -328,30 +334,59 @@ class OwnerController extends Controller
         
     }
 
-    public function propertyList(Request $request) {
+    // public function propertyList(Request $request) {
 
-        // All filter list
-        $ownerId = $request->owner_id ?? null;
+    //     // All filter list
+    //     $ownerId = $request->owner_id ?? null;
 
-        $query = $this->property->with('user')->select(
-            'property_id', 
-            'user_id',
-            'property_name',
-            'property_status'
-        );
+    //     $query = $this->property->with('user')->select(
+    //         'property_id', 
+    //         'user_id',
+    //         'property_name',
+    //         'property_status'
+    //     );
 
-        if ($ownerId) {
-            $query->where('user_id', $ownerId);
+    //     if ($ownerId) {
+    //         $query->where('user_id', $ownerId);
+    //     }
+
+    //     $query = $query->get();
+
+    //     return DataTables::of($query)
+    //         ->addColumn('actions', function () {
+    //             return '';
+    //         })
+    //         ->toJson();
+    // }
+
+
+    public function propertyList(Request $request)
+    {
+        $authUser   = $request->user();
+        $filterId   = $request->get('owner_id');
+
+        $query = $this->property
+            ->with('user:id,name', 'tenants')
+            ->select('id', 'property_id', 'user_id', 'property_name', 'property_status');
+
+        if ($authUser->hasRole('admin')) {
+            if ($filterId) {
+                $query->where('user_id', $filterId);
+            }
+        } else {
+            if ($filterId) {
+                $query->where('user_id', $filterId);
+            } else {
+                $query->where('user_id', $authUser->id);
+            }
         }
-
-        $query = $query->get();
-
-        return DataTables::of($query)
-            ->addColumn('actions', function () {
-                return '';
-            })
-            ->toJson();
+        if ($request->has('search') && $request->search !== null && $request->search !== '') {
+            $query->where('property_name', 'like', "%{$request->search}%");
+        }
+        $properties = $query->paginate($request->limit);
+        return $properties;
     }
+
 
     public function propertyView(Request $request) {
         if ($request->property_id) {
@@ -383,6 +418,23 @@ class OwnerController extends Controller
     }
 
     public function propertyAssignmentView() {
-        return Inertia::render('PropertyAssignment/PropertyAssignment');
+        return Inertia::render('PropertyAssignment/PropertyAssignment',
+            [
+                'role_ids' => RoleIdEnum::toArray(),
+            ]
+        );
+    }
+
+    public function assignTenantToProperty(Request $request) {
+        $this->propertyTenant->updateOrCreate([
+            'property_id' => $request->property_id,
+            'user_id' => $request->tenant_id,
+            'end_date' => null
+        ],[
+            'start_date' => $request->start_date ? Carbon::parse($request->start_date) : null,
+            'end_date' => $request->end_date ? Carbon::parse($request->end_date) : null
+        ]);
+
+        return redirect()->route('property.assignment.index');
     }
 }

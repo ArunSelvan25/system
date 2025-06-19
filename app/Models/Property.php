@@ -64,8 +64,9 @@ class Property extends Model
     public function tenants()
     {
         return $this->belongsToMany(User::class, 'property_tenant')
-                    ->withPivot('start_date', 'end_date', 'status')
-                    ->withTimestamps();
+            ->withPivot('start_date', 'end_date', 'status')
+            ->withTimestamps()
+            ->orderByPivot('updated_at', 'desc');
     }
 
     public function transactions()

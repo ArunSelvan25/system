@@ -126,7 +126,7 @@ return new class extends Migration
             $table->foreign('property_id')->references('id')->on('properties')->onDelete('cascade');
 
              $table->unsignedBigInteger('user_id')->index();
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade'); // tenant
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
 
             $table->enum('transaction_type', ['rent', 'deposit', 'maintenance', 'penalty', 'other']);
             $table->decimal('amount', 10, 2);
@@ -139,7 +139,7 @@ return new class extends Migration
             $table->string('invoice_number')->nullable()->unique();
             $table->string('receipt_path')->nullable();
 
-            $table->enum('status', ['pending', 'paid', 'failed', 'refunded'])->default('paid');
+            $table->enum('status', ['pending', 'paid', 'failed', 'refunded'])->default('pending');
 
             $table->timestamps();
             $table->softDeletes();

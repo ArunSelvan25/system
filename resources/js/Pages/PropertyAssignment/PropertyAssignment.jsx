@@ -1,296 +1,310 @@
-import React, { useState } from 'react';
-import { Head } from '@inertiajs/react';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { FaSearch, FaGripVertical } from 'react-icons/fa';
+import React, { useEffect, useState } from "react";
+import { Head, useForm } from "@inertiajs/react";
+import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/solid";
+import UnassignedPropertyList from "./UnassignedPropertyList";
 
-const initialProperties = Array.from({ length: 100 }, (_, i) => ({
-  id: `property-${i + 1}`,
-  name: `Property ${i + 1}`,
-  tenants: [],
-}));
+/* --------------------------------------------------
+ * Main component
+ * -------------------------------------------------- */
+export default function PropertyTenantAssignment() {
+  /* ---------- initial tenants & properties ---------- */
+  const [tenants, setTenants] = useState([]);
+  const [properties, setProperties] = useState([]);
 
-const initialTenants = Array.from({ length: 100 }, (_, i) => ({
-  id: `tenant-${i + 1}`,
-  name: `Tenant ${i + 1}`,
-}));
+  const [propertySearch, setPropertySearch] = useState("");
+  const PROPS_PER_PAGE = 12;
+  const [page, setPage] = useState(1);
+  const [totalPropertyPages, setTotalPropertyPages] = useState(1);
+  const [nextPageUrl, setNextPageUrl] = useState('');
+  const [previousPageUrl, setPreviousPageUrl] = useState('');
+  const [propertyPageLimit, setPropertyPageLimit] = useState(12);
+
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [pendingTenant, setPendingTenant] = useState(null);
+  const [pendingPropertyId, setPendingPropertyId] = useState(null);
+
+  // Assign Tenant property form
+  const { data, setData, processing, errors, reset } = useForm({
+    property_id: '',
+    tenant_id: '',
+    start_date: '',
+    end_date: ''
+  })
 
 
-const PropertyAssignment = () => {
-    // Pagination
-    const [tenantPage, setTenantPage] = useState(1);
-    const [propertyPage, setPropertyPage] = useState(1);
-    const [pageSize, setPageSize] = useState(5);
-    const [pagePropertySize, setPagePropertySize] = useState(5);
+  useEffect(() => {
+    fetchTenants();
+    fetchProperties();
+  }, []);
 
-    const [tenantSearch, setTenantSearch] = useState('');
-    const [propertySearch, setPropertySearch] = useState('');
-    const [propertyList, setPropertyList] = useState(initialProperties);
-    const [unassignedTenants, setUnassignedTenants] = useState(initialTenants);
+  useEffect(() => {
+    fetchProperties();
+  }, [propertySearch])
 
-    const filteredTenants = unassignedTenants.filter(t =>
-        t.name.toLowerCase().includes(tenantSearch.toLowerCase())
-    );
-    const filteredProperties = propertyList.filter(p =>
-        p.name.toLowerCase().includes(propertySearch.toLowerCase())
-    );
+  const fetchTenants = async () =>  {
+    const start = (page - 1) * PROPS_PER_PAGE;
+    const searchByRole = 3;
 
-    const paginatedTenants = filteredTenants.slice((tenantPage - 1) * pageSize, tenantPage * pageSize);
-    const paginatedProperties = filteredProperties.slice((propertyPage - 1) * pagePropertySize, propertyPage * pagePropertySize);
+    try {
+      const response = await axios.get(route('users.datatable'), {
+        params: {
 
-    const handleDrop = (result) => {
-        if (!result.destination) return;
+          role: searchByRole,
+        },
+      });
 
-        const { source, destination, draggableId } = result;
+      setTenants(response.data.data);
+    } catch (error) {
+      console.error('Error fetching tenants:', error);
+    } finally {
+      // setLoading(false);
+    }
+  }
 
-        if (source.droppableId === destination.droppableId) return;
+  const nextPage = () => {
+    if (!nextPageUrl) return;
+    const next = page + 1;
+    if (page < totalPropertyPages) {
+      setPage((p) => p + 1);
+    }
+    fetchProperties(null, next);
+  };
 
-        const tenant = unassignedTenants.find(t => t.id === draggableId)
-        || propertyList.flatMap(p => p.tenants).find(t => t.id === draggableId);
+  const previousPage = () => {
+    if (!previousPageUrl) return;
+    const prev = page - 1;
+    setPage(prev);
+    fetchProperties(null, prev);
+  };
 
-        if (!tenant) return;
+  const fetchProperties = async (url = null, pageNum = page) => {
+    try {
+      const finalUrl = url || route("property.list");
 
-        if (destination.droppableId === 'unassigned-tenants') {
-        // Move back to unassigned
-        const updatedProperties = propertyList.map(p => ({
-            ...p,
-            tenants: p.tenants.filter(t => t.id !== draggableId),
-        }));
-        setUnassignedTenants([...unassignedTenants, tenant]);
-        setPropertyList(updatedProperties);
-        } else {
-        const updatedProperties = propertyList.map(p => {
-            if (p.id === destination.droppableId) {
-            return {
-                ...p,
-                tenants: [...p.tenants, tenant],
-            };
-            }
-            return {
-            ...p,
-            tenants: p.tenants.filter(t => t.id !== draggableId),
-            };
-        });
+      const response = await axios.get(finalUrl, {
+        params: {
+          page: pageNum,
+          limit: propertyPageLimit,
+          search: propertySearch
+        },
+      });
+      setProperties(response.data.data);
+      setTotalPropertyPages(response.data.last_page);
+      setNextPageUrl(response.data.next_page_url);
+      setPreviousPageUrl(response.data.prev_page_url);
+    } catch (error) {
+      console.error("Error fetching properties:", error);
+    }
+  };
 
-        setPropertyList(updatedProperties);
-        setUnassignedTenants(unassignedTenants.filter(t => t.id !== draggableId));
-        }
-    };
 
+  const filteredProps = properties?.filter((p) =>
+    p.property_name.toLowerCase().includes(propertySearch.toLowerCase())
+  );
+
+  const paginatedProps = filteredProps;
+
+  /* ---------- handlers ---------- */
+
+  const requestAssignTenant = (propertyId, tenant) => {
+    setPendingTenant(tenant);
+    setPendingPropertyId(propertyId);
+    setConfirmModalOpen(true);
+  };
+
+  const handleSelectTenant = (propertyId, tenant) => {
+    setProperties((prev) => prev.map((p) => (p.id === propertyId ? { ...p, tenant } : p)));
+  };
+
+  const handleSubmit = async (e) => {
+
+    e.preventDefault()
+
+    const payload = {
+      ...data,
+      property_id: pendingPropertyId,
+      tenant_id: pendingTenant?.id,
+    }
+
+    try {
+      const response = await axios.post(route('property.assignment.post'), payload);
+      handleSelectTenant(payload.property_id, payload.tenant_id);
+    } catch (error) {
+      console.error("Error assigning property with tenant:", error);
+    }
+
+    console.log('data', payload);
+
+    
+
+  }
+
+  const handleAddTenant = (propertyId, name, phone) => {
+    const newTenant = { id: `t_${tenants.length + 1}`, name, phone };
+    setTenants((prev) => [...prev, newTenant]);
+    handleSelectTenant(propertyId, newTenant);
+  };
+
+  const handleRemoveTenant = () => {
+    console.log('tenant remove');
+    
+  }
+
+  /* ---------- derived for card component ---------- */
+  const propsWithTenantData = paginatedProps.map((p) => ({ ...p, allTenants: tenants }));
+
+  /* ---------- render ---------- */
   return (
-    <AuthenticatedLayout>
+    <AuthenticatedLayout header={<h2 className="text-xl font-semibold text-gray-800">Tenant Assignment</h2>}>
       <Head title="Tenant Assignment" />
 
-        <div className='py-4'>
+      <main className="min-h-screen flex items-start justify-center py-4 px-4 sm:px-6 lg:px-8">
+        <div className="w-full bg-white/90 backdrop-blur-md rounded-3xl shadow-2xl ring-1 ring-black/5 p-6 sm:p-10 space-y-8">
+          {/* Search */}
+          <div className="flex items-center gap-3">
+            <MagnifyingGlassIcon className="w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search properties…"
+              value={propertySearch}
+              onChange={(e) => {
+                setPropertySearch(e.target.value);
+                setPage(1);
+              }}
+              className="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 mt-1 block w-full capitalize"
+            />
+          </div>
 
-
-            {/* 5 */}
-            <div className="mx-auto mt-12 px-4 sm:px-6 lg:px-8">
-                <div className="bg-white shadow-2xl sm:rounded-3xl border border-gray-100">
-                    <div className="p-8 text-gray-900">
-                    <div className="flex flex-col lg:flex-row gap-8">
-                        <DragDropContext onDragEnd={handleDrop}>
-                        {/* LEFT PANEL - UNASSIGNED TENANTS */}
-                        <div className="w-full lg:w-1/3">
-                            <div className="sticky top-0 z-10 bg-white pb-4">
-                            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Unassigned Tenants</h2>
-                            <div className="relative">
-                                <FaSearch className="absolute top-3.5 left-4 text-gray-400" />
-                                <input
-                                type="text"
-                                placeholder="Search tenants..."
-                                value={tenantSearch}
-                                onChange={(e) => setTenantSearch(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-black focus:outline-none bg-gray-50 transition"
-                                />
-                            </div>
-                            </div>
-
-                            <Droppable droppableId="unassigned-tenants">
-                            {(provided, snapshot) => (
-                                <div
-                                ref={provided.innerRef}
-                                {...provided.droppableProps}
-                                className={`mt-5 p-4 rounded-2xl border transition-all shadow-inner max-h-[600px] overflow-y-auto 
-                                    ${snapshot.isDraggingOver ? 'bg-green-50' : 'bg-gray-50'}
-                                    scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100`}
-                                >
-                                    {paginatedTenants.length === 0 ? (
-                                        <div className="text-center text-gray-400 py-10 italic">No tenants found.</div>
-                                    ) : (
-                                        paginatedTenants.map((tenant, index) => (
-                                        <Draggable key={tenant.id} draggableId={tenant.id} index={index}>
-                                            {(provided) => (
-                                            <div
-                                                ref={provided.innerRef}
-                                                {...provided.draggableProps}
-                                                {...provided.dragHandleProps}
-                                                className="p-4 mb-3 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md flex items-center gap-3 transition transform hover:-translate-y-0.5"
-                                            >
-                                                <FaGripVertical className="text-gray-400" />
-                                                <span className="font-medium text-gray-800">{tenant.name}</span>
-                                            </div>
-                                            )}
-                                        </Draggable>
-                                        ))
-                                    )}
-                                    {provided.placeholder}
-                                </div>
-                            )}
-                            
-                            </Droppable>
-                            <div className="flex flex-wrap justify-between items-center gap-4 mt-4">
-                                <div className="flex items-center gap-2">
-                                    <label htmlFor="perPage" className="text-sm text-gray-600">Per Page:</label>
-                                    <select
-                                    id="perPage"
-                                    value={pageSize}
-                                    onChange={(e) => {
-                                        setPageSize(parseInt(e.target.value));
-                                        setTenantPage(1); // reset to first page on page size change
-                                    }}
-                                    className="border rounded px-2 py-1 text-sm bg-white"
-                                    >
-                                    {[5, 10, 20, 50].map(size => (
-                                        <option key={size} value={size}>{size}</option>
-                                    ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex items-center gap-4">
-                                    <button
-                                    disabled={tenantPage === 1}
-                                    onClick={() => setTenantPage((p) => Math.max(1, p - 1))}
-                                    className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
-                                    >
-                                    Previous
-                                    </button>
-                                    <span className="text-sm text-gray-600">
-                                    Page {tenantPage} of {Math.ceil(filteredTenants.length / pageSize)}
-                                    </span>
-                                    <button
-                                    disabled={tenantPage >= Math.ceil(filteredTenants.length / pageSize)}
-                                    onClick={() => setTenantPage((p) => p + 1)}
-                                    className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
-                                    >
-                                    Next
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-
-                        {/* RIGHT PANEL - PROPERTIES */}
-                        <div className="w-full lg:w-2/3">
-                            <div className="sticky top-0 z-10 bg-white pb-4">
-                            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Properties</h2>
-                            <div className="relative">
-                                <FaSearch className="absolute top-3.5 left-4 text-gray-400" />
-                                <input
-                                type="text"
-                                placeholder="Search properties..."
-                                value={propertySearch}
-                                onChange={(e) => setPropertySearch(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 rounded-2xl border border-gray-300 focus:ring-2 focus:ring-black focus:outline-none bg-gray-50 transition"
-                                />
-                            </div>
-                            </div>
-
-                            <div className="grid md:grid-cols-2 gap-6 mt-5 max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 pr-1">
-                            {paginatedProperties.length === 0 ? (
-                                <div className="col-span-2 text-center text-gray-400 italic py-6">
-                                No properties found.
-                                </div>
-                            ) : (
-                                paginatedProperties.map((property) => (
-                                <Droppable droppableId={property.id} key={property.id}>
-                                    {(provided, snapshot) => (
-                                
-                                    <div
-                                        ref={provided.innerRef}
-                                        {...provided.droppableProps}
-                                        className={`rounded-2xl p-5 border transition-all shadow hover:shadow-lg ${
-                                        snapshot.isDraggingOver ? 'bg-indigo-50' : 'bg-gray-50'
-                                        }`}
-                                    >
-                                        <h3 className="text-black font-semibold text-lg mb-3">{property.name}</h3>
-                                        <div className="space-y-2">
-                                        {property.tenants.length === 0 ? (
-                                            <p className="text-sm text-black italic">No tenants assigned.</p>
-                                        ) : (
-                                            property.tenants.map((tenant, index) => (
-                                            <Draggable key={tenant.id} draggableId={tenant.id} index={index}>
-                                                {(provided) => (
-                                                <div
-                                                    ref={provided.innerRef}
-                                                    {...provided.draggableProps}
-                                                    {...provided.dragHandleProps}
-                                                    className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm hover:shadow-md flex items-center gap-2 transition transform hover:-translate-y-0.5"
-                                                >
-                                                    <FaGripVertical className="text-gray-400" />
-                                                    <span className="text-gray-800">{tenant.name}</span>
-                                                </div>
-                                                )}
-                                            </Draggable>
-                                            ))
-                                        )}
-                                        {provided.placeholder}
-                                        </div>
-                                    </div>
-                                    )}
-                                </Droppable>
-                                ))
-                            )}
-                            </div>
-                            <div className="flex flex-wrap justify-between items-center gap-4 mt-4">
-                                <div className="flex items-center gap-2">
-                                    <label htmlFor="perPage" className="text-sm text-gray-600">Per Page:</label>
-                                    <select
-                                    id="perPropertyPage"
-                                    value={pagePropertySize}
-                                    onChange={(e) => {
-                                        setPagePropertySize(parseInt(e.target.value));
-                                        setPropertyPage(1); // reset to first page on page size change
-                                    }}
-                                    className="border rounded px-2 py-1 text-sm bg-white"
-                                    >
-                                    {[5, 10, 20, 50].map(size => (
-                                        <option key={size} value={size}>{size}</option>
-                                    ))}
-                                    </select>
-                                </div>
-
-                                <div className="flex items-center gap-4">
-                                    <button
-                                    disabled={propertyPage === 1}
-                                    onClick={() => setPropertyPage((p) => Math.max(1, p - 1))}
-                                    className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
-                                    >
-                                    Previous
-                                    </button>
-                                    <span className="text-sm text-gray-600">
-                                    Page {propertyPage} of {Math.ceil(filteredTenants.length / pagePropertySize)}
-                                    </span>
-                                    <button
-                                    disabled={propertyPage >= Math.ceil(filteredTenants.length / pagePropertySize)}
-                                    onClick={() => setPropertyPage((p) => p + 1)}
-                                    className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 disabled:opacity-50"
-                                    >
-                                    Next
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        </DragDropContext>
-                    </div>
-                    </div>
-                </div>
+          {/* Cards grid */}
+          {propsWithTenantData.length === 0 ? (
+            <p className="text-center text-gray-400 italic py-20">No properties found</p>
+          ) : (
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-6">
+              {propsWithTenantData.map((p) => (
+                <UnassignedPropertyList
+                  key={p.id}
+                  property={p}
+                  onSelectTenant={requestAssignTenant}
+                  onAddTenant={handleAddTenant}
+                  onRemoveTenant={handleRemoveTenant}
+                />
+              ))}
             </div>
+          )}
 
-
+          {/* Pagination */}
+          <div className="flex justify-end items-center gap-3 text-sm text-gray-600">
+            <button
+              onClick={previousPage}
+              disabled={page === 1}
+              className="px-3 py-1 rounded-md bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <span>
+              Page {page} of {totalPropertyPages}
+            </span>
+            <button
+              onClick={nextPage}
+              disabled={page === totalPropertyPages}
+              className="px-3 py-1 rounded-md bg-gray-100 hover:bg-gray-200 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
+      </main>
+
+      {confirmModalOpen && (
+        // <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+        //   <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-lg space-y-4">
+        //     <h2 className="text-lg font-semibold text-gray-800">Confirm Assignment</h2>
+        //     <p className="text-sm text-gray-600">
+        //       Assign <span className="font-medium text-indigo-600">{pendingTenant?.name}</span> to this property?
+        //     </p>
+        //     <div className="flex justify-end gap-2 pt-4">
+        //       <button
+        //         onClick={() => {
+        //           setConfirmModalOpen(false);
+        //           setPendingTenant(null);
+        //           setPendingPropertyId(null);
+        //         }}
+        //         className="px-4 py-2 text-sm rounded-md bg-gray-100 hover:bg-gray-200"
+        //       >
+        //         Cancel
+        //       </button>
+        //       <button
+        //         onClick={() => {
+        //           handleSelectTenant(pendingPropertyId, pendingTenant);
+        //           setConfirmModalOpen(false);
+        //           setPendingTenant(null);
+        //           setPendingPropertyId(null);
+        //         }}
+        //         className="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+        //       >
+        //         Confirm
+        //       </button>
+        //     </div>
+        //   </div>
+        // </div>
+
+         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
+          <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-lg space-y-4">
+            <h2 className="text-lg font-semibold text-gray-800">Assign Tenant</h2>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Assign <span className="font-medium text-indigo-600">{pendingTenant?.name}</span> to this property?
+              </p>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Start Date</label>
+                <input
+                  type="date"
+                  value={data.start_date}
+                  onChange={(e) => setData("start_date", e.target.value)}
+                  className="w-full border-gray-300 rounded-md shadow-sm"
+                />
+                {errors.start_date && <div className="text-sm text-red-600">{errors.start_date}</div>}
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">End Date</label>
+                <input
+                  type="date"
+                  value={data.end_date}
+                  onChange={(e) => setData("end_date", e.target.value)}
+                  className="w-full border-gray-300 rounded-md shadow-sm"
+                />
+                {errors.end_date && <div className="text-sm text-red-600">{errors.end_date}</div>}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    reset();
+                  }}
+                  className="px-4 py-2 text-sm rounded-md bg-gray-100 hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={processing}
+                  className="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  Assign
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </AuthenticatedLayout>
   );
-};
-
-export default PropertyAssignment;
+}

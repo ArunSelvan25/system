@@ -425,16 +425,161 @@ class OwnerController extends Controller
         );
     }
 
-    public function assignTenantToProperty(Request $request) {
-        $this->propertyTenant->updateOrCreate([
-            'property_id' => $request->property_id,
-            'user_id' => $request->tenant_id,
-            'end_date' => null
-        ],[
-            'start_date' => $request->start_date ? Carbon::parse($request->start_date) : null,
-            'end_date' => $request->end_date ? Carbon::parse($request->end_date) : null
+   public function assignTenantToProperty(Request $request)
+    {
+        $request->validate([
+            'property_id' => 'required|exists:properties,id',
+            'tenant_id' => 'required|exists:users,id',
+            'start_date' => 'required|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
-        return redirect()->route('property.assignment.index');
+        DB::beginTransaction();
+
+        try {
+            $newStartDate = Carbon::parse($request->start_date);
+            $newEndDate = $request->end_date ? Carbon::parse($request->end_date) : null;
+
+            // Check if the same tenant is already actively assigned to this property
+            $existingActive = PropertyTenant::where('property_id', $request->property_id)
+                ->where('user_id', $request->tenant_id)
+                ->whereNull('end_date')
+                ->where('status', 1)
+                ->first();
+
+            if ($existingActive) {
+                // If same start date, avoid duplicate
+                $startSame = $existingActive->start_date && Carbon::parse($existingActive->start_date)->eq($newStartDate);
+                $endSame = $existingActive->end_date && $newEndDate
+                    ? Carbon::parse($existingActive->end_date)->eq($newEndDate)
+                    : $existingActive->end_date === $newEndDate; // Handles null values
+
+                if ($startSame && $endSame) {
+                    DB::rollBack();
+                    return back()->withErrors([
+                        'error' => 'This tenant is already actively assigned to the property with the same start and end date.'
+                    ]);
+                }
+
+                // Otherwise, update the changed dates
+                $existingActive->update([
+                    'start_date' => $newStartDate,
+                    'end_date' => $newEndDate,
+                ]);
+
+                DB::commit();
+                return redirect()->route('property.assignment.index')
+                    ->with('success', 'Tenant assignment updated successfully.');
+            }
+
+            // End any other active tenant on this property
+            PropertyTenant::where('property_id', $request->property_id)
+                ->whereNull('end_date')
+                ->where('status', 1)
+                ->update([
+                    'end_date' => Carbon::now(),
+                    'status' => 0,
+                ]);
+
+            // Create new tenant assignment
+            PropertyTenant::create([
+                'property_id' => $request->property_id,
+                'user_id' => $request->tenant_id,
+                'start_date' => $newStartDate,
+                'end_date' => $newEndDate,
+                'status' => 1,
+            ]);
+
+            DB::commit();
+
+            return redirect()->route('property.assignment.index')
+                ->with('success', 'Tenant assigned successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withErrors([
+                'error' => 'Failed to assign tenant. Please try again later.',
+            ]);
+        }
     }
+
+    public function propertyAssignmentList(Request $request)
+    {
+        $authUser = $request->user();
+        $filterId = $request->get('owner_id');
+        $search = $request->get('search');
+        $limit = $request->get('limit', 12);
+        $now = Carbon::now();
+
+        $query = Property::query()
+            ->with([
+                'user:id,name',
+                'tenants' => function ($q) {
+                    $q->select('users.id', 'name', 'phone')
+                    ->withPivot('start_date', 'end_date', 'status')
+                    ->orderByDesc('pivot_start_date');
+                }
+            ])
+            ->select('id', 'property_id', 'user_id', 'property_name', 'property_status');
+
+        // Filter by owner
+        if ($authUser->hasRole('admin')) {
+            if ($filterId) {
+                $query->where('user_id', $filterId);
+            }
+        } else {
+            $query->where('user_id', $filterId ?: $authUser->id);
+        }
+
+        // Search
+        if (!empty($search)) {
+            $query->where('property_name', 'like', '%' . $search . '%');
+        }
+
+        $properties = $query->paginate($limit);
+
+        // Determine tenant per property based on priority
+        $properties->getCollection()->transform(function ($property) use ($now) {
+            $current = null;
+            $upcoming = null;
+            $previous = null;
+
+            foreach ($property->tenants as $tenant) {
+                $start = $tenant->pivot->start_date ? Carbon::parse($tenant->pivot->start_date) : null;
+                $end = $tenant->pivot->end_date ? Carbon::parse($tenant->pivot->end_date) : null;
+
+                if (!$start || $tenant->pivot->status !== 1) continue;
+
+                if ($start->lte($now) && (!$end || $end->gte($now))) {
+                    // Current active tenant
+                    $current = $tenant;
+                    break; // no need to check further
+                } elseif ($start->gt($now)) {
+                    // Future tenant
+                    if (!$upcoming || $start->lt(Carbon::parse($upcoming->pivot->start_date))) {
+                        $upcoming = $tenant;
+                    }
+                } elseif ($end && $end->lt($now)) {
+                    // Past tenant
+                    if (!$previous || Carbon::parse($end)->gt(Carbon::parse($previous->pivot->end_date))) {
+                        $previous = $tenant;
+                    }
+                }
+            }
+
+            if ($current) {
+                $property->tenants = collect([$current]);
+            } elseif ($upcoming) {
+                $property->tenants = collect([$upcoming]);
+            } elseif ($previous) {
+                $property->tenants = collect([$previous]);
+            } else {
+                $property->tenants = collect([]);
+            }
+
+            return $property;
+        });
+
+        return response()->json($properties);
+    }
+
 }
